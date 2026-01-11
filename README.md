@@ -1,73 +1,79 @@
-# React + TypeScript + Vite
+# Family Stock Checker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A Progressive Web Application (PWA) to help families track food inventory and expiry dates in real-time.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Mobile-First Design
+- OCR Scanner for product recognition
+- Family Sharing capabilities
+- Real-time cloud sync with Firebase
+- Multi-language support (English, Traditional/Simplified Chinese)
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Frontend: React 19 + TypeScript
+- Build Tool: Vite
+- Styling: Tailwind CSS
+- OCR Engine: Tesseract.js
+- Backend: Firebase (Firestore, Auth, Hosting)
+- Icons: Lucide React
+- Date management: date-fns
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Installation
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+git clone https://github.com/tonymo2024/FamilyStockChecker.git
+cd FamilyStockChecker
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+The app will be available at http://localhost:5173
+
+### Build
+
+```bash
+npm run build
+npm run preview
+```
+
+## Project Structure
+
+```
+src/
+├── components/     # React components
+├── context/        # Auth context
+├── pages/          # Page components
+├── services/       # Firebase and OCR services
+├── types/          # TypeScript definitions
+└── utils/          # Utility functions
+```
+
+## Firebase Setup
+
+1. Create a Firebase project
+2. Enable Firestore and Google Auth
+3. Create .env with your Firebase configuration
+
+## Deployment
+
+```bash
+npm run build
+firebase deploy
+```
+
+## License
+
+MIT License
+
+## Author
+
+Tony Mo - https://github.com/tonymo2024
