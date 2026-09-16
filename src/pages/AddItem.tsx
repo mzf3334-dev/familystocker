@@ -59,7 +59,7 @@ const AddItem: React.FC = () => {
       navigate('/');
     } catch (error: any) {
       console.error('Error adding item:', error);
-      alert(error.message || 'Failed to save item. Check your GitHub token in Settings.');
+      alert(error.message || 'Failed to save item. Check the Family Server URL in Settings.');
     } finally {
       setIsSubmitting(false);
     }

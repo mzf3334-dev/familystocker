@@ -38,7 +38,7 @@ const Dashboard: React.FC = () => {
       await deleteItem(id);
       setItems((prev) => prev.filter((i) => i.id !== id));
     } catch (e: any) {
-      alert(e.message || 'Failed to delete. Check your GitHub token in Settings.');
+      alert(e.message || 'Failed to delete. Check the Family Server URL in Settings.');
     }
   };
 

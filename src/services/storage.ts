@@ -1,31 +1,31 @@
 /**
- * GitHub-based storage for Family Stock Checker.
+ * Family Stock Checker storage.
  *
- * Data lives in a single JSON file (data/inventory.json) inside this repo.
- * Reads are done via raw.githubusercontent.com (no auth needed).
- * Writes use the GitHub Contents API with a fine-grained Personal Access Token
- * that each family member pastes once — it is stored only in their browser
- * (localStorage) and never committed.
+ * All family members save WITHOUT any GitHub tokens:
+ * the app talks to a Google Apps Script web app (free), which commits
+ * changes to data/inventory.json in this GitHub repo using a hidden
+ * owner token stored inside the script (see google-apps-script/Code.gs).
  *
- * Concurrency: writes use the file's current "sha" so conflicting writes fail
- * loudly instead of silently overwriting each other. On conflict we re-fetch,
- * merge, and retry once.
+ * - The Apps Script URL can be baked into src/config.ts by the owner,
+ *   or pasted per-device in Settings (stored in localStorage).
+ * - If no URL is configured, the app falls back to READ-ONLY mode
+ *   (fetches the committed JSON from raw.githubusercontent.com).
  */
 
-// This repo — where the app is hosted AND where data/inventory.json lives
-export const GITHUB_OWNER = 'mzf3334-dev';
-export const GITHUB_REPO = 'familystocker';
-export const GITHUB_BRANCH = 'main';
-export const DATA_PATH = 'data/inventory.json';
+import { APPS_SCRIPT_URL as DEFAULT_URL, GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH, DATA_PATH } from '../config';
 
-const API_BASE = 'https://api.github.com';
+const ENDPOINT_KEY = 'fsc_server_url';
+
+export const getEndpoint = (): string =>
+  localStorage.getItem(ENDPOINT_KEY) || DEFAULT_URL;
+
+export const setEndpoint = (url: string) => {
+  const trimmed = url.trim();
+  if (trimmed) localStorage.setItem(ENDPOINT_KEY, trimmed.replace(/\/$/, ''));
+  else localStorage.removeItem(ENDPOINT_KEY);
+};
+
 const RAW_BASE = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}`;
-
-const TOKEN_KEY = 'fsc_github_token';
-
-export const getToken = (): string | null => localStorage.getItem(TOKEN_KEY);
-export const setToken = (token: string) => localStorage.setItem(TOKEN_KEY, token.trim());
-export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
 // ---------- Data model ----------
 
@@ -47,144 +47,60 @@ const EMPTY_DATA: InventoryData = { items: [] };
 // ---------- Read ----------
 
 export const fetchData = async (): Promise<InventoryData> => {
-  try {
-    const res = await fetch(`${RAW_BASE}/${DATA_PATH}?t=${Date.now()}`, {
-      cache: 'no-store',
-    });
-    if (res.status === 404) return EMPTY_DATA; // file not created yet
-    if (!res.ok) throw new Error(`Failed to load data (${res.status})`);
+  const endpoint = getEndpoint();
+  if (endpoint) {
+    // Read through the Apps Script (works even if the JSON isn't committed yet)
+    const res = await fetch(endpoint, { method: 'GET', redirect: 'follow' });
     const json = await res.json();
-    return { items: Array.isArray(json.items) ? json.items : [] };
-  } catch (error) {
-    console.error('fetchData error:', error);
-    throw error;
+    if (!json.ok) throw new Error(json.error || 'Failed to load data');
+    return { items: Array.isArray(json.data.items) ? json.data.items : [] };
   }
+
+  // Read-only fallback: the committed JSON file (no auth needed)
+  const res = await fetch(`${RAW_BASE}/${DATA_PATH}?t=${Date.now()}`, { cache: 'no-store' });
+  if (res.status === 404) return EMPTY_DATA;
+  if (!res.ok) throw new Error(`Failed to load data (${res.status})`);
+  const json = await res.json();
+  return { items: Array.isArray(json.items) ? json.items : [] };
 };
 
 // ---------- Write ----------
 
-interface WriteOptions {
-  /** Retry once on sha conflict by re-fetching and re-applying a transform */
-  mergeRetry?: (current: InventoryData) => InventoryData;
-}
-
-export const saveData = async (
-  transform: (current: InventoryData) => InventoryData,
-  options: WriteOptions = {}
-): Promise<InventoryData> => {
-  const token = getToken();
-  if (!token) throw new Error('GitHub token not set. Go to Settings and paste your token.');
-
-  const doWrite = async (): Promise<InventoryData> => {
-    // 1. Get current file (need its sha to update)
-    const metaRes = await fetch(
-      `${API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${DATA_PATH}?ref=${GITHUB_BRANCH}`,
-      { headers: githubHeaders(token) }
-    );
-
-    let sha: string | undefined;
-    let current: InventoryData = EMPTY_DATA;
-    if (metaRes.ok) {
-      const meta = await metaRes.json();
-      sha = meta.sha;
-      current = JSON.parse(atob(meta.content.replace(/\n/g, '')));
-    } else if (metaRes.status !== 404) {
-      throw new Error(`Failed to read data file (${metaRes.status}). Check your token permissions.`);
-    }
-
-    // 2. Apply transform and commit
-    const next = transform(current);
-    const body = {
-      message: `Update inventory (${new Date().toISOString()})`,
-      content: btoa(unescape(encodeURIComponent(JSON.stringify(next, null, 2)))),
-      branch: GITHUB_BRANCH,
-      ...(sha ? { sha } : {}),
-    };
-
-    const putRes = await fetch(
-      `${API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${DATA_PATH}`,
-      {
-        method: 'PUT',
-        headers: { ...githubHeaders(token), 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }
-    );
-
-    if (putRes.status === 409 || putRes.status === 422) {
-      throw new ConflictError();
-    }
-    if (!putRes.ok) {
-      const err = await putRes.json().catch(() => ({}));
-      throw new Error(err.message || `Failed to save (${putRes.status})`);
-    }
-    return next;
-  };
-
-  try {
-    return await doWrite();
-  } catch (e) {
-    if (e instanceof ConflictError && options.mergeRetry) {
-      // Someone else wrote first — re-fetch and re-apply
-      const latest = await fetchData();
-      const merged = options.mergeRetry(latest);
-      const token2 = getToken()!;
-      const metaRes = await fetch(
-        `${API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${DATA_PATH}?ref=${GITHUB_BRANCH}`,
-        { headers: githubHeaders(token2) }
-      );
-      const meta = await metaRes.json();
-      const putRes = await fetch(
-        `${API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${DATA_PATH}`,
-        {
-          method: 'PUT',
-          headers: { ...githubHeaders(token2), 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: `Update inventory (merged, ${new Date().toISOString()})`,
-            content: btoa(unescape(encodeURIComponent(JSON.stringify(merged, null, 2)))),
-            branch: GITHUB_BRANCH,
-            sha: meta.sha,
-          }),
-        }
-      );
-      if (!putRes.ok) throw new Error('Failed to save after merge. Please try again.');
-      return merged;
-    }
-    throw e;
+const post = async (payload: object): Promise<InventoryData> => {
+  const endpoint = getEndpoint();
+  if (!endpoint) {
+    throw new Error('Family Server not set up yet. Open Settings to add the server URL (owner does this once).');
   }
+  // text/plain avoids a CORS preflight; Apps Script requires simple requests
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+    redirect: 'follow',
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'Failed to save');
+  return json.data;
 };
 
-class ConflictError extends Error {}
-
-const githubHeaders = (token: string) => ({
-  Authorization: `Bearer ${token}`,
-  Accept: 'application/vnd.github+json',
-  'X-GitHub-Api-Version': '2022-11-28',
-});
-
-// ---------- Item helpers ----------
-
 export const addItem = async (item: Omit<InventoryItem, 'id' | 'createdAt'>): Promise<void> => {
-  await saveData(
-    (current) => ({
-      items: [
-        ...current.items,
-        { ...item, id: crypto.randomUUID(), createdAt: new Date().toISOString() },
-      ],
-    }),
-    {
-      mergeRetry: (latest) => ({
-        items: [
-          ...latest.items,
-          { ...item, id: crypto.randomUUID(), createdAt: new Date().toISOString() },
-        ],
-      }),
-    }
-  );
+  await post({ action: 'add', item });
 };
 
 export const deleteItem = async (id: string): Promise<void> => {
-  await saveData(
-    (current) => ({ items: current.items.filter((i) => i.id !== id) }),
-    { mergeRetry: (latest) => ({ items: latest.items.filter((i) => i.id !== id) }) }
-  );
+  await post({ action: 'delete', id });
+};
+
+/** Quick connectivity test used by the Settings page */
+export const pingServer = async (url?: string): Promise<{ ok: boolean; count?: number; error?: string }> => {
+  const target = (url || getEndpoint()).trim().replace(/\/$/, '');
+  if (!target) return { ok: false, error: 'No URL entered' };
+  try {
+    const res = await fetch(target, { method: 'GET', redirect: 'follow' });
+    const json = await res.json();
+    if (!json.ok) return { ok: false, error: json.error || 'Server error' };
+    return { ok: true, count: json.data?.items?.length ?? 0 };
+  } catch (e: any) {
+    return { ok: false, error: e.message || 'Could not reach server' };
+  }
 };
