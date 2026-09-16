@@ -57,9 +57,35 @@ const Settings: React.FC = () => {
             <code className="bg-gray-100 px-1 rounded text-xs">{GITHUB_OWNER}/{GITHUB_REPO}</code> repo.
           </p>
 
+          {/* How-to guide */}
+          <details className="mb-4 bg-blue-50 rounded-xl p-4 text-sm text-gray-700">
+            <summary className="font-bold text-blue-700 cursor-pointer">📖 How to get a token (one-time)</summary>
+            <ol className="list-decimal ml-4 mt-2 space-y-1">
+              <li>
+                On GitHub, open{' '}
+                <a
+                  href="https://github.com/settings/personal-access-tokens/new"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 underline"
+                >
+                  Settings → Personal access tokens → Fine-grained tokens
+                </a>{' '}
+                (must be signed in as the repo owner <b>{GITHUB_OWNER}</b>, or a collaborator)
+              </li>
+              <li>Repository access → <b>Only select repositories</b> → choose <b>{GITHUB_REPO}</b></li>
+              <li>Permissions → <b>Contents → Read and write</b></li>
+              <li>Generate token, copy it, paste below → Save Token</li>
+            </ol>
+            <p className="mt-2 text-xs text-gray-500">
+              Tip: family members without GitHub accounts can share one token created by the owner.
+              The token is stored only in this browser — never uploaded anywhere.
+            </p>
+          </details>
+
           <input
             type="password"
-            placeholder="ghp_xxxxxxxxxxxx"
+            placeholder="github_pat_... or ghp_..."
             value={token}
             onChange={(e) => setLocalToken(e.target.value)}
             className="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm mb-3"
