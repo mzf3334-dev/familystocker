@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../services/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { addItem } from '../services/storage';
 import { useAuth } from '../context/AuthContext';
 import Scanner from '../components/Scanner';
 import type { OCRResult } from '../services/ocr';
 import { ArrowLeft, Bell } from 'lucide-react';
-import { addToGoogleCalendar } from '../utils/calendar';
+import { setReminderForItem } from '../utils/calendar';
 
 const AddItem: React.FC = () => {
   const { user } = useAuth();
@@ -17,16 +16,14 @@ const AddItem: React.FC = () => {
   const [setReminder, setSetReminder] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleNameScanComplete = (result: OCRResult) => {
+  const handleScanComplete = (result: OCRResult) => {
+    // One photo fills both fields
     if (result.name && result.name !== 'Unknown Product') {
       setName(result.name);
     }
     if (result.chineseName) {
       setChineseName(result.chineseName);
     }
-  };
-
-  const handleDateScanComplete = (result: OCRResult) => {
     if (result.expiryDate) {
       try {
         const date = new Date(result.expiryDate);
@@ -41,30 +38,28 @@ const AddItem: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.familyId) {
-      alert('You must be part of a family to add items.');
+    if (!user) {
+      alert('Please select your name first.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'inventory'), {
-        familyId: user.familyId,
-        name,
-        chineseName,
+      await addItem({
+        name: name || chineseName,
+        chineseName: chineseName || undefined,
         expiryDate,
-        addedBy: user.uid,
-        createdAt: new Date().toISOString(),
+        addedBy: user.name,
       });
 
       if (setReminder) {
-        addToGoogleCalendar(name, expiryDate);
+        setReminderForItem(name || chineseName, expiryDate);
       }
 
       navigate('/');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding item:', error);
-      alert('Failed to save item.');
+      alert(error.message || 'Failed to save item. Check your GitHub token in Settings.');
     } finally {
       setIsSubmitting(false);
     }
@@ -80,8 +75,7 @@ const AddItem: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-4 mb-8">
-        <Scanner label="Scan Product Name" onScanComplete={handleNameScanComplete} />
-        <Scanner label="Scan Expiry Date" onScanComplete={handleDateScanComplete} />
+        <Scanner label="Scan Label (Name + Expiry)" onScanComplete={handleScanComplete} />
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">

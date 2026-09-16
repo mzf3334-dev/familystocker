@@ -1,59 +1,47 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../services/firebase';
-import { doc, getDoc } from 'firebase/firestore';
-import type { User } from '../types';
+import React, { createContext, useContext, useState } from 'react';
+
+/**
+ * Ultra-simple "auth" for a 3-member family.
+ * The member just picks their name on first use — stored in localStorage.
+ * No passwords, no Firebase, no backend.
+ */
+
+export const FAMILY_MEMBERS = ['Tony', 'Member 2', 'Member 3'] as const;
+export type MemberName = (typeof FAMILY_MEMBERS)[number];
+
+interface User {
+  name: string;
+}
 
 interface AuthContextType {
   user: User | null;
-  loading: boolean;
+  login: (name: string) => void;
+  logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, loading: true });
+const AuthContext = createContext<AuthContextType>({ user: null, login: () => {}, logout: () => {} });
+
+const STORAGE_KEY = 'fsc_member';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? { name: saved } : null;
+  });
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      try {
-        if (firebaseUser) {
-          // Fetch additional user data from Firestore (like familyId)
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          const userData = userDoc.data();
+  const login = (name: string) => {
+    localStorage.setItem(STORAGE_KEY, name);
+    setUser({ name });
+  };
 
-          setUser({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
-            familyId: userData?.familyId || null,
-          });
-        } else {
-          setUser(null);
-        }
-      } catch (error) {
-        console.error('Auth Context Error:', error);
-        // Fallback to basic user info if Firestore fails
-        if (firebaseUser) {
-          setUser({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
-            familyId: null,
-          });
-        }
-      } finally {
-        setLoading(false);
-      }
-    });
-
-    return unsubscribe;
-  }, []);
+  const logout = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    setUser(null);
+  };
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
-      {!loading && children}
+    <AuthContext.Provider value={{ user, login, logout }}>
+      {children}
     </AuthContext.Provider>
   );
 };

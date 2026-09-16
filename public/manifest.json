@@ -1,0 +1,23 @@
+{
+  "name": "Family Stock Checker",
+  "short_name": "Family Stock",
+  "description": "Track family food inventory and expiry dates with photo scanning",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/myapp_icon.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/myapp_icon.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}

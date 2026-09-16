@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Camera, Upload, Loader2 } from 'lucide-react';
-import { performOCR, parseOCRText, rotateImage } from '../services/ocr';
+import { performOCR, parseOCRText, rotateImage, preprocessImage } from '../services/ocr';
 import type { OCRResult } from '../services/ocr';
 
 interface ScannerProps {
@@ -19,40 +19,39 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete, label = "Scan" }) => 
     if (!file) return;
 
     setIsScanning(true);
-    setScanStatus('Initializing...');
+    setScanStatus('Preparing image...');
     try {
       if (!file.type.startsWith('image/')) {
         throw new Error('Please select an image file.');
       }
-      
+
+      // Preprocess once: downscale + grayscale + contrast boost (much better OCR)
+      const processed = await preprocessImage(file);
+
       // Try multiple rotations if needed
       const rotations = [0, 90, 270, 180];
       let finalResult: OCRResult | null = null;
 
-      for (let i = 0; i < rotations.length; i++) {
-        const rotation = rotations[i];
+      for (const rotation of rotations) {
         setScanStatus(rotation === 0 ? 'Scanning...' : `Retrying (rotated ${rotation}°)`);
-        
-        const processedFile = rotation === 0 ? file : await rotateImage(file, rotation);
-        
-        // Use only English for date scanning to improve speed and accuracy
-        const languages = label.toLowerCase().includes('date') ? ['eng'] : ['eng', 'chi_sim', 'chi_tra'];
-        const text = await performOCR(processedFile, languages);
+
+        const scanFile = rotation === 0 ? processed : await rotateImage(processed, rotation);
+        const text = await performOCR(scanFile);
         const result = parseOCRText(text);
 
-        // If we found a date, we're happy
-        if (result.expiryDate) {
+        // A complete result has both a name and a date — stop early
+        if (result.expiryDate && (result.name !== 'Unknown Product' || result.chineseName)) {
           finalResult = result;
           break;
         }
-        
-        // If it's the first pass and we found a name but no date, keep it as fallback
-        if (rotation === 0 && (result.name !== 'Unknown Product' || result.chineseName)) {
+
+        // Keep the best partial result as fallback
+        if (!finalResult || (result.expiryDate && !finalResult.expiryDate)) {
           finalResult = result;
         }
       }
 
-      if (finalResult) {
+      if (finalResult && (finalResult.expiryDate || finalResult.name !== 'Unknown Product' || finalResult.chineseName)) {
         onScanComplete(finalResult);
       } else {
         alert('Could not find any product info or date. Please try a clearer photo.');
